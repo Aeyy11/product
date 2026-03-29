@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Store Price List</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+body {
+  font-family: Arial;
+  background: #f5f5f5;
+  padding: 20px;
+}
+
+h1 {
+  text-align: center;
+}
+
+.controls {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+input {
+  padding: 8px;
+  flex: 1;
+}
+
+button {
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+#productList {
+  display: grid;
+  gap: 10px;
+}
+
+.product {
+  background: white;
+  padding: 10px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.product img {
+  width: 60px;
+  height: 60px;
+  object-fit: cover;
+}
+
+#confirmBox {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.5);
+  display: none;
+  justify-content: center;
+  align-items: center;
+}
+
+#confirmBox div {
+  background: white;
+  padding: 20px;
+  border-radius: 10px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>🛒 Store Price List</h1>
+
+<div class="controls">
+  <input type="text" id="searchBar" placeholder="Search product...">
+  <button onclick="addProduct()">➕ Add</button>
+  <button id="editToggle" onclick="toggleEdit()">✏️ Edit</button>
+</div>
+
+<div id="productList"></div>
+
+<div id="confirmBox">
+  <div>
+    <p>Delete this product?</p>
+    <button onclick="confirmDelete()">Yes</button>
+    <button onclick="closeConfirm()">Cancel</button>
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+
+const supabaseClient = supabase.createClient(
+  "https://doevgzfluvspgfdpustq.supabase.co",
+  "sb_publishable_jCEeV45FKVHSlBHD53nPZA_fIt5C1Qx"
+);
+
+let isEditMode = false;
+let deleteIndex = null;
+let products = [];
+
+const productList = document.getElementById("productList");
+const searchBar = document.getElementById("searchBar");
+const editToggle = document.getElementById("editToggle");
+
+// LOAD
+async function loadProducts() {
+  const { data, error } = await supabaseClient.from("products").select("*");
+  if (error) console.error(error);
+  else {
+    products = data || [];
+    renderProducts(searchBar ? searchBar.value : "");
+  }
+}
+
+// DISPLAY
+function renderProducts(filter = "") {
+  productList.innerHTML = "";
+
+  products
+    .filter(p => p.name.toLowerCase().includes(filter.toLowerCase()))
+    .forEach((product, index) => {
+
+      const div = document.createElement("div");
+      div.className = "product";
+
+      if (isEditMode) {
+        div.innerHTML = `
+          <img src="${product.image}">
+          <input type="file" onchange="uploadImage(event, ${index})">
+
+          <input type="text" value="${product.name}" 
+            onchange="updateProduct(${index}, 'name', this.value)">
+
+          ₱ <input type="number" value="${product.price}" 
+            onchange="updateProduct(${index}, 'price', this.value)">
+
+          <button onclick="deleteProduct(${index})">🗑</button>
+        `;
+      } else {
+        div.innerHTML = `
+          <img src="${product.image}">
+          <div>${product.name}</div>
+          <div>₱ ${product.price}</div>
+        `;
+      }
+
+      productList.appendChild(div);
+    });
+}
+
+// ADD
+window.addProduct = async function () {
+  await supabaseClient.from("products").insert([
+    { name: "New Product", price: 0, image: "https://via.placeholder.com/70" }
+  ]);
+  loadProducts();
+};
+
+// UPDATE
+window.updateProduct = async function (index, field, value) {
+  const product = products[index];
+
+  await supabaseClient
+    .from("products")
+    .update({ [field]: value })
+    .eq("id", product.id);
+
+  loadProducts();
+};
+
+// IMAGE
+window.uploadImage = function (event, index) {
+  const file = event.target.files[0];
+  const reader = new FileReader();
+
+  reader.onload = async function(e) {
+    await supabaseClient
+      .from("products")
+      .update({ image: e.target.result })
+      .eq("id", products[index].id);
+
+    loadProducts();
+  };
+
+  if (file) reader.readAsDataURL(file);
+};
+
+// DELETE
+window.deleteProduct = function (index) {
+  deleteIndex = index;
+  document.getElementById("confirmBox").style.display = "flex";
+};
+
+window.confirmDelete = async function () {
+  if (deleteIndex !== null) {
+    await supabaseClient
+      .from("products")
+      .delete()
+      .eq("id", products[deleteIndex].id);
+
+    loadProducts();
+  }
+  closeConfirm();
+};
+
+window.closeConfirm = function () {
+  deleteIndex = null;
+  document.getElementById("confirmBox").style.display = "none";
+};
+
+// TOGGLE EDIT
+window.toggleEdit = function () {
+  isEditMode = !isEditMode;
+  if (editToggle) {
+    editToggle.textContent = isEditMode ? "💾 Save" : "✏️ Edit";
+  }
+  renderProducts(searchBar ? searchBar.value : "");
+};
+
+// SEARCH
+if (searchBar) {
+  searchBar.addEventListener("input", function () {
+    renderProducts(this.value);
+  });
+}
+
+// START
+loadProducts();
+
+});
+</script>
+
+</body>
+</html>
