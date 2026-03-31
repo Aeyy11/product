@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Price List ni Helen</title>
+<title>Store Price List</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -18,76 +18,92 @@ h1 {
   text-align: center;
 }
 
+/* 🔥 CENTERED CONTROLS */
 .controls {
   display: flex;
+  justify-content: center; /* center horizontally */
+  align-items: center;
   gap: 10px;
-  margin-bottom: 15px;
+  margin-bottom: 20px;
 }
 
-input {
-  padding: 8px;
-  flex: 1;
+.controls input {
+  width: 250px;
 }
 
-button {
-  padding: 8px 12px;
-  cursor: pointer;
+input, button {
+  padding: 10px;
+  font-size: 14px;
 }
 
 #productList {
   display: grid;
   gap: 10px;
+  max-width: 500px;
+  margin: auto;
 }
 
 .product {
   background: white;
-  padding: 10px;
+  padding: 12px;
   border-radius: 10px;
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 10px;
 }
 
-.product img {
-  width: 60px;
-  height: 60px;
-  object-fit: cover;
-}
-
-#confirmBox {
+/* POPUP */
+.popup {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0,0,0,0.5);
   display: none;
+  background: rgba(0,0,0,0.5);
   justify-content: center;
   align-items: center;
 }
 
-#confirmBox div {
+.popup-content {
   background: white;
   padding: 20px;
   border-radius: 10px;
+  width: 250px;
+  text-align: center;
+}
+
+.popup-content input {
+  width: 100%;
 }
 </style>
 </head>
 
 <body>
 
-<h1>🛒 Price List ni Helen</h1>
+<h1>🛒 Store Price List</h1>
 
 <div class="controls">
   <input type="text" id="searchBar" placeholder="Search product...">
-  <button onclick="addProduct()">➕ Add</button>
-  <button id="editToggle" onclick="toggleEdit()">✏️ Edit</button>
+  <button onclick="openAddPopup()">➕ Add Product</button>
 </div>
 
 <div id="productList"></div>
 
-<div id="confirmBox">
-  <div>
+<!-- ADD / EDIT POPUP -->
+<div id="popup" class="popup">
+  <div class="popup-content">
+    <h3 id="popupTitle">Add Product</h3>
+    <input type="text" id="popupName" placeholder="Product name"><br><br>
+    <input type="number" id="popupPrice" placeholder="Price"><br><br>
+    <button onclick="saveProduct()">💾 Save</button>
+    <button onclick="closePopup()">Cancel</button>
+  </div>
+</div>
+
+<!-- DELETE CONFIRM -->
+<div id="confirmBox" class="popup">
+  <div class="popup-content">
     <p>Delete this product?</p>
     <button onclick="confirmDelete()">Yes</button>
     <button onclick="closeConfirm()">Cancel</button>
@@ -102,22 +118,22 @@ const supabaseClient = supabase.createClient(
   "sb_publishable_jCEeV45FKVHSlBHD53nPZA_fIt5C1Qx"
 );
 
-let isEditMode = false;
-let deleteIndex = null;
 let products = [];
+let editIndex = null;
+let deleteIndex = null;
 
 const productList = document.getElementById("productList");
 const searchBar = document.getElementById("searchBar");
-const editToggle = document.getElementById("editToggle");
 
 // LOAD
 async function loadProducts() {
-  const { data, error } = await supabaseClient.from("products").select("*");
-  if (error) console.error(error);
-  else {
-    products = data || [];
-    renderProducts(searchBar ? searchBar.value : "");
-  }
+  const { data } = await supabaseClient.from("products").select("*");
+
+  products = data || [];
+
+  products.sort((a, b) => a.name.localeCompare(b.name));
+
+  renderProducts(searchBar.value);
 }
 
 // DISPLAY
@@ -131,66 +147,68 @@ function renderProducts(filter = "") {
       const div = document.createElement("div");
       div.className = "product";
 
-      if (isEditMode) {
-        div.innerHTML = `
-          <img src="${product.image}">
-          <input type="file" onchange="uploadImage(event, ${index})">
+      div.innerHTML = `
+        <div>
+          <b>${product.name}</b><br>
+          ₱ ${product.price}
+        </div>
 
-          <input type="text" value="${product.name}" 
-            onchange="updateProduct(${index}, 'name', this.value)">
-
-          ₱ <input type="number" value="${product.price}" 
-            onchange="updateProduct(${index}, 'price', this.value)">
-
+        <div>
+          <button onclick="editProduct(${index})">✏️</button>
           <button onclick="deleteProduct(${index})">🗑</button>
-        `;
-      } else {
-        div.innerHTML = `
-          <img src="${product.image}">
-          <div>${product.name}</div>
-          <div>₱ ${product.price}</div>
-        `;
-      }
+        </div>
+      `;
 
       productList.appendChild(div);
     });
 }
 
-// ADD
-window.addProduct = async function () {
-  await supabaseClient.from("products").insert([
-    { name: "New Product", price: 0, image: "https://via.placeholder.com/70" }
-  ]);
-  loadProducts();
+// OPEN ADD
+window.openAddPopup = function () {
+  editIndex = null;
+  document.getElementById("popupTitle").textContent = "Add Product";
+  document.getElementById("popupName").value = "";
+  document.getElementById("popupPrice").value = "";
+  document.getElementById("popup").style.display = "flex";
 };
 
-// UPDATE
-window.updateProduct = async function (index, field, value) {
-  const product = products[index];
+// EDIT
+window.editProduct = function (index) {
+  editIndex = index;
+  const p = products[index];
 
-  await supabaseClient
-    .from("products")
-    .update({ [field]: value })
-    .eq("id", product.id);
-
-  loadProducts();
+  document.getElementById("popupTitle").textContent = "Edit Product";
+  document.getElementById("popupName").value = p.name;
+  document.getElementById("popupPrice").value = p.price;
+  document.getElementById("popup").style.display = "flex";
 };
 
-// IMAGE
-window.uploadImage = function (event, index) {
-  const file = event.target.files[0];
-  const reader = new FileReader();
+// SAVE
+window.saveProduct = async function () {
+  const name = document.getElementById("popupName").value;
+  const price = document.getElementById("popupPrice").value;
 
-  reader.onload = async function(e) {
+  if (!name || !price) {
+    alert("Fill all fields");
+    return;
+  }
+
+  if (editIndex === null) {
+    await supabaseClient.from("products").insert([{ name, price }]);
+  } else {
     await supabaseClient
       .from("products")
-      .update({ image: e.target.result })
-      .eq("id", products[index].id);
+      .update({ name, price })
+      .eq("id", products[editIndex].id);
+  }
 
-    loadProducts();
-  };
+  closePopup();
+  loadProducts();
+};
 
-  if (file) reader.readAsDataURL(file);
+// CLOSE POPUP
+window.closePopup = function () {
+  document.getElementById("popup").style.display = "none";
 };
 
 // DELETE
@@ -200,37 +218,23 @@ window.deleteProduct = function (index) {
 };
 
 window.confirmDelete = async function () {
-  if (deleteIndex !== null) {
-    await supabaseClient
-      .from("products")
-      .delete()
-      .eq("id", products[deleteIndex].id);
+  await supabaseClient
+    .from("products")
+    .delete()
+    .eq("id", products[deleteIndex].id);
 
-    loadProducts();
-  }
   closeConfirm();
+  loadProducts();
 };
 
 window.closeConfirm = function () {
-  deleteIndex = null;
   document.getElementById("confirmBox").style.display = "none";
 };
 
-// TOGGLE EDIT
-window.toggleEdit = function () {
-  isEditMode = !isEditMode;
-  if (editToggle) {
-    editToggle.textContent = isEditMode ? "💾 Save" : "✏️ Edit";
-  }
-  renderProducts(searchBar ? searchBar.value : "");
-};
-
 // SEARCH
-if (searchBar) {
-  searchBar.addEventListener("input", function () {
-    renderProducts(this.value);
-  });
-}
+searchBar.addEventListener("input", function () {
+  renderProducts(this.value);
+});
 
 // START
 loadProducts();
